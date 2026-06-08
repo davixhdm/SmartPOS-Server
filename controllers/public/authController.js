@@ -21,7 +21,7 @@ const register = catchAsync(async (req, res) => {
   const client = await Client.create({ businessName, ownerName, email, phone, address, currency });
   const license = await licenseService.createTrialLicense(client._id);
 
-  await User.create({
+  const user = await User.create({
     clientId: client._id,
     name: ownerName,
     email,
@@ -31,7 +31,11 @@ const register = catchAsync(async (req, res) => {
     permissions: { manageProducts: true, processSales: true, manageCustomers: true, viewReports: true, manageStaff: true, processRefunds: true },
   });
 
+  // Send trial license email
   await emailService.sendTrialLicenseEmail(email, businessName, license.licenseKey);
+
+  // Send welcome email with payment pending info
+  await emailService.sendWelcomeEmail(email, ownerName, businessName);
 
   res.json({
     success: true,
@@ -61,6 +65,9 @@ const registerPending = catchAsync(async (req, res) => {
     isOwner: true,
     active: false,
   });
+
+  // Send welcome email (pending payment)
+  await emailService.sendWelcomeEmail(email, ownerName, businessName);
 
   res.json({
     success: true,
@@ -126,10 +133,6 @@ const verifyLicense = catchAsync(async (req, res) => {
   res.json({ success: true, ...result });
 });
 
-// ============================================================
-// NEW: Forgot & Reset Password Functions
-// ============================================================
-
 // @desc    Forgot password - send reset email
 // @route   POST /api/public/auth/forgot-password
 // @access  Public
@@ -141,13 +144,11 @@ const forgotPassword = catchAsync(async (req, res) => {
     throw new AppError("No user found with that email", 404);
   }
 
-  // Generate reset token
   const resetToken = crypto.randomBytes(32).toString("hex");
   user.resetPasswordToken = resetToken;
-  user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+  user.resetPasswordExpires = Date.now() + 3600000;
   await user.save();
 
-  // Send email
   await emailService.sendPasswordResetEmail(email, resetToken, user.name);
 
   res.json({
@@ -182,4 +183,11 @@ const resetPassword = catchAsync(async (req, res) => {
   });
 });
 
-module.exports = { register, registerPending, login, verifyLicense, forgotPassword, resetPassword };
+module.exports = { 
+  register, 
+  registerPending, 
+  login, 
+  verifyLicense, 
+  forgotPassword, 
+  resetPassword 
+};

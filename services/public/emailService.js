@@ -31,24 +31,99 @@ const sendTrialLicenseEmail = async (to, businessName, licenseKey) => {
   }
 };
 
-const sendPaymentApproved = async (to, businessName, licenseKey) => {
+const sendPaymentApproved = async (to, businessName, licenseKey, plan, expiryDate) => {
   try {
     const comm = await Communication.findOne().lean();
-    let html = `<h1>Payment Approved, ${businessName}!</h1>
-                <p>Your license key: <strong>${licenseKey}</strong></p>
-                <p>You can now activate your full SmartPOS license.</p>`;
-    let text = `Payment Approved, ${businessName}!\nYour license key: ${licenseKey}\nYou can now activate your full SmartPOS license.`;
+    const loginUrl = `${process.env.CLIENT_URL || 'https://smartpos.pxxl.click'}/login`;
+    const activationUrl = `${process.env.CLIENT_URL || 'https://smartpos.pxxl.click'}/activate`;
+    
+    const formatExpiryDate = new Date(expiryDate).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    let planDisplay = '';
+    switch(plan) {
+      case 'monthly': planDisplay = 'Monthly Subscription'; break;
+      case 'yearly': planDisplay = 'Yearly Subscription'; break;
+      case 'permanent': planDisplay = 'Permanent License'; break;
+      default: planDisplay = plan || 'Standard Plan';
+    }
+    
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Approved - License Active</title>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 500px; margin: 50px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { background-color: #10b981; padding: 30px 20px; text-align: center; }
+          .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+          .content { padding: 30px; text-align: center; }
+          .license-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 15px; margin: 20px 0; }
+          .license-key { font-family: monospace; font-size: 18px; font-weight: bold; color: #10b981; letter-spacing: 2px; word-break: break-all; }
+          .info-box { background-color: #f8fafc; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: left; }
+          .button { display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-size: 16px; font-weight: bold; margin: 20px 0; }
+          .footer { background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Payment Approved!</h1>
+          </div>
+          <div class="content">
+            <p>Dear <strong>${businessName}</strong>,</p>
+            <p>Your payment has been approved. Your SmartPOS license is now <strong>ACTIVE</strong>.</p>
+            
+            <div class="license-box">
+              <p style="margin: 0 0 5px 0; font-size: 12px; color: #166534;">Your License Key:</p>
+              <p class="license-key">${licenseKey}</p>
+            </div>
+            
+            <div class="info-box">
+              <p style="margin: 0 0 10px 0; font-weight: bold;">📋 License Details:</p>
+              <p style="margin: 5px 0;">• Plan: <strong>${planDisplay}</strong></p>
+              <p style="margin: 5px 0;">• Expires: <strong>${plan === 'permanent' ? 'Never (Permanent)' : formatExpiryDate}</strong></p>
+              <p style="margin: 5px 0;">• Status: <strong style="color: #10b981;">Active</strong></p>
+            </div>
+            
+            <p>Use the button below to activate your license and start using SmartPOS:</p>
+            
+            <a href="${activationUrl}" class="button">Activate Your License</a>
+            
+            <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+              Need help? Contact us at <a href="mailto:support@smartpos.com" style="color: #2563eb;">support@smartpos.com</a>
+            </p>
+          </div>
+          <div class="footer">
+            <p>SmartPOS - Point of Sale System</p>
+            <p>© ${new Date().getFullYear()} SmartPOS. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    let text = `Payment Approved!\n\nDear ${businessName},\n\nYour payment has been approved.\n\nLicense Key: ${licenseKey}\nPlan: ${planDisplay}\nExpires: ${plan === 'permanent' ? 'Never (Permanent)' : formatExpiryDate}\nStatus: Active\n\nActivate here: ${activationUrl}\n\nSmartPOS Team`;
     
     if (comm?.emailTemplates?.paymentApproved) {
       html = comm.emailTemplates.paymentApproved
         .replace(/{{licenseKey}}/g, licenseKey)
-        .replace(/{{businessName}}/g, businessName);
+        .replace(/{{businessName}}/g, businessName)
+        .replace(/{{plan}}/g, planDisplay)
+        .replace(/{{expiryDate}}/g, formatExpiryDate)
+        .replace(/{{activationUrl}}/g, activationUrl);
       text = html.replace(/<[^>]*>/g, '');
     }
     
     await sendEmail({ 
       to, 
-      subject: "SmartPOS - Payment Approved", 
+      subject: `SmartPOS - License Activated (${planDisplay})`, 
       htmlContent: html,
       textContent: text
     });
@@ -216,15 +291,65 @@ const sendWelcomeEmail = async (to, userName, businessName) => {
     const loginUrl = `${process.env.CLIENT_URL || 'https://smartpos.pxxl.click'}/login`;
     
     let html = `
-      <h1>Welcome to SmartPOS, ${userName || 'User'}!</h1>
-      <p>Your business account "${businessName}" has been successfully created.</p>
-      <p>You can now log in to start managing your business:</p>
-      <p><a href="${loginUrl}">${loginUrl}</a></p>
-      <p>If you have any questions, contact our support team.</p>
-      <br/>
-      <p>SmartPOS Team</p>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to SmartPOS</title>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 500px; margin: 50px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { background-color: #2563eb; padding: 30px 20px; text-align: center; }
+          .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+          .content { padding: 30px; text-align: center; }
+          .info-box { background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: left; }
+          .button { display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-size: 16px; font-weight: bold; margin: 20px 0; }
+          .footer { background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎉 Welcome to SmartPOS, ${userName || 'User'}!</h1>
+          </div>
+          <div class="content">
+            <p>Dear <strong>${businessName}</strong>,</p>
+            <p>Thank you for registering with SmartPOS! Your account has been successfully created.</p>
+            
+            <div class="info-box">
+              <p style="margin: 0 0 10px 0; font-weight: bold;">📋 Registration Details:</p>
+              <p style="margin: 5px 0;">• Business Name: <strong>${businessName}</strong></p>
+              <p style="margin: 5px 0;">• Owner: <strong>${userName || 'User'}</strong></p>
+              <p style="margin: 5px 0;">• Email: <strong>${to}</strong></p>
+              <p style="margin: 10px 0 0 0; color: #d97706;">⏳ Status: <strong>Pending Payment Approval</strong></p>
+            </div>
+            
+            <p>Your license key will be sent to you via email once your payment is <strong>approved</strong>.</p>
+            <p>You will receive:</p>
+            <ul style="text-align: left; color: #64748b;">
+              <li>✓ Your unique license key</li>
+              <li>✓ Subscription plan details</li>
+              <li>✓ Expiration date</li>
+              <li>✓ Activation instructions</li>
+            </ul>
+            
+            <a href="${loginUrl}" class="button">Login to Your Account</a>
+            
+            <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+              Need help? Contact us at <a href="mailto:support@smartpos.com" style="color: #2563eb;">support@smartpos.com</a>
+            </p>
+          </div>
+          <div class="footer">
+            <p>SmartPOS - Point of Sale System</p>
+            <p>© ${new Date().getFullYear()} SmartPOS. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
     `;
-    let text = `Welcome to SmartPOS, ${userName || 'User'}!\n\nYour business account "${businessName}" has been successfully created.\n\nYou can now log in at: ${loginUrl}\n\nIf you have any questions, contact our support team.\n\nSmartPOS Team`;
+    
+    let text = `Welcome to SmartPOS, ${businessName}!\n\nRegistration Details:\nBusiness: ${businessName}\nOwner: ${userName || 'User'}\nEmail: ${to}\nStatus: Pending Payment Approval\n\nYour license key will be sent once payment is approved.\n\nLogin: ${loginUrl}\n\nSmartPOS Team`;
     
     if (comm?.emailTemplates?.welcome) {
       html = comm.emailTemplates.welcome
@@ -246,7 +371,6 @@ const sendWelcomeEmail = async (to, userName, businessName) => {
     return false;
   }
 };
-
 const sendReceiptEmail = async (to, customerName, saleData) => {
   try {
     const comm = await Communication.findOne().lean();
