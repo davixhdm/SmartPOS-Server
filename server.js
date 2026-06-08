@@ -15,6 +15,7 @@ const errorHandler = require("./middleware/common/errorHandler");
 const requestLogger = require("./middleware/common/requestLogger");
 const routes = require("./routes/index");
 const { startKeepAlive, stopKeepAlive } = require("./keepAlive");
+const { startTrialReminderCron } = require("./cron/trialReminders");
 
 const app = express();
 
@@ -107,6 +108,7 @@ const start = async () => {
       console.log(`  │  PayPal      : ${(env.PAYPAL_CLIENT_ID ? "Configured" : "Not set").padEnd(27)}│`);
       console.log(`  │  Brevo       : ${(env.BREVO_API_KEY ? "Configured" : "Not set").padEnd(27)}│`);
       console.log(`  │  Cloudinary  : ${(env.CLOUDINARY_CLOUD_NAME ? "Configured" : "Not set").padEnd(27)}│`);
+      console.log(`  │  HDM Bridge  : ${(env.HDM_API_KEY ? "Configured" : "Not set").padEnd(27)}│`);
       console.log("  └─────────────────────────────────────────┘");
       console.log("");
 
@@ -116,6 +118,16 @@ const start = async () => {
       // START KEEP-ALIVE (Prevent Render free tier sleep)
       // ============================================================
       startKeepAlive();
+
+      // ============================================================
+      // START TRIAL REMINDER CRON JOB (Only in production)
+      // ============================================================
+      if (env.NODE_ENV === "production") {
+        startTrialReminderCron();
+        logger.info("Trial reminder cron job started");
+      } else {
+        logger.info("Trial reminder cron job disabled (development mode)");
+      }
     });
 
     // Graceful shutdown

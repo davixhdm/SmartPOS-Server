@@ -7,7 +7,7 @@
 const https = require('https');
 const http = require('http');
 
-const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://smartpos-server-4x3e.onrender.com';
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://smartpos-server-api.onrender.com';
 const PING_INTERVAL = 9 * 60 * 1000; // 9 minutes (Render sleeps after 15)
 const INITIAL_DELAY = 60 * 1000; // 60 seconds wait for server to fully start
 
