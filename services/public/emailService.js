@@ -287,9 +287,131 @@ const sendTrialExpired = async (to, businessName) => {
   return true;
 };
 
-// ============================================================
-// MODULE EXPORTS
-// ============================================================
+// Add to services/public/emailService.js
+
+const sendMaintenanceNotification = async (to, userName, businessName, startTime, endTime, reason) => {
+  try {
+    const formatDate = (date) => {
+      return new Date(date).toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'
+      });
+    };
+    
+    const loginUrl = `${process.env.CLIENT_URL || 'https://smartpos.pxxl.click'}/login`;
+    
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>System Maintenance Notification</title>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 500px; margin: 50px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { background-color: #d97706; padding: 30px 20px; text-align: center; }
+          .header h1 { color: #ffffff; margin: 0; }
+          .content { padding: 30px; }
+          .info-box { background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin: 20px 0; }
+          .info-row { padding: 5px 0; }
+          .footer { background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔧 System Maintenance Notice</h1>
+          </div>
+          <div class="content">
+            <p>Dear <strong>${userName || businessName}</strong>,</p>
+            <p>SmartPOS will be undergoing scheduled maintenance.</p>
+            
+            <div class="info-box">
+              <div class="info-row"><strong>📅 Start Time:</strong> ${formatDate(startTime)}</div>
+              <div class="info-row"><strong>⏰ Estimated Duration:</strong> 2-3 hours</div>
+              <div class="info-row"><strong>📋 Reason:</strong> ${reason}</div>
+              <div class="info-row"><strong>✅ Action Required:</strong> None</div>
+            </div>
+            
+            <p>During this time, the system may be temporarily unavailable. We apologize for any inconvenience.</p>
+            <p>Once maintenance is complete, SmartPOS will resume normal operation.</p>
+            
+            <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+              Questions? Contact us at <a href="mailto:support@smartpos.com">support@smartpos.com</a>
+            </p>
+          </div>
+          <div class="footer">
+            <p>SmartPOS - Point of Sale System</p>
+            <p>© ${new Date().getFullYear()} SmartPOS. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    await sendEmail({ to, subject: "SmartPOS - Scheduled Maintenance Notice", htmlContent: html });
+    return true;
+  } catch (err) {
+    logger.error("Failed to send maintenance notification", { error: err.message, to });
+    return false;
+  }
+};
+
+const sendMaintenanceCompleted = async (to, userName, businessName) => {
+  try {
+    const loginUrl = `${process.env.CLIENT_URL || 'https://smartpos.pxxl.click'}/login`;
+    
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Maintenance Complete</title>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 500px; margin: 50px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { background-color: #10b981; padding: 30px 20px; text-align: center; }
+          .header h1 { color: #ffffff; margin: 0; }
+          .content { padding: 30px; text-align: center; }
+          .button { display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 5px; font-weight: bold; margin: 20px 0; }
+          .footer { background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Maintenance Complete</h1>
+          </div>
+          <div class="content">
+            <p>Dear <strong>${userName || businessName}</strong>,</p>
+            <p>The scheduled maintenance has been <strong>completed successfully</strong>.</p>
+            <p>SmartPOS is now back online and fully operational.</p>
+            <a href="${loginUrl}" class="button">Login to SmartPOS</a>
+            <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+              Thank you for your patience.
+            </p>
+          </div>
+          <div class="footer">
+            <p>SmartPOS - Point of Sale System</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    await sendEmail({ to, subject: "SmartPOS - Maintenance Complete", htmlContent: html });
+    return true;
+  } catch (err) {
+    logger.error("Failed to send maintenance completed email", { error: err.message, to });
+    return false;
+  }
+};
+
 module.exports = { 
   sendTrialLicenseEmail, 
   sendPaymentApproved, 
@@ -300,5 +422,7 @@ module.exports = {
   sendTrialReminder5Days,
   sendTrialReminder1Day,
   sendTrialExpired,
-  sendUserApprovedWithLicenseEmail
+  sendUserApprovedWithLicenseEmail,
+  sendMaintenanceNotification,
+  sendMaintenanceCompleted       
 };
