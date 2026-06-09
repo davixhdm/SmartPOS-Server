@@ -412,6 +412,24 @@ const sendMaintenanceCompleted = async (to, userName, businessName) => {
   }
 };
 
+// Add to services/public/emailService.js
+
+const sendCustomEmail = async ({ to, toName, subject, htmlContent }) => {
+  try {
+    await sendEmail({
+      to,
+      subject,
+      htmlContent,
+      textContent: htmlContent.replace(/<[^>]*>/g, ''),
+    });
+    return true;
+  } catch (err) {
+    logger.error("Failed to send custom email", { error: err.message, to });
+    return false;
+  }
+};
+
+
 module.exports = { 
   sendTrialLicenseEmail, 
   sendPaymentApproved, 
@@ -424,5 +442,6 @@ module.exports = {
   sendTrialExpired,
   sendUserApprovedWithLicenseEmail,
   sendMaintenanceNotification,
-  sendMaintenanceCompleted       
+  sendMaintenanceCompleted,
+  sendCustomEmail      
 };
