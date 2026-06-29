@@ -1,4 +1,3 @@
-// services/client/aiService.js
 const AISettings = require("../../models/client/AISettings");
 const AIConfig = require("../../models/admin/AIConfig");
 const env = require("../../config/env");
@@ -18,11 +17,15 @@ const getAIConfig = async () => {
   }
 
   const dbConfig = await AIConfig.findOne().lean();
+
+  const defaultProvider = (dbConfig?.providers || []).find(p => p.name === (dbConfig?.globalDefault || 'hdm') && p.enabled)
+    || (dbConfig?.providers || []).find(p => p.enabled);
+
   cachedConfig = {
-    baseUrl: dbConfig?.baseUrl || env.HDM_AI_BASE_URL || "https://hdmaiserver.pxxl.click/api/v1",
-    apiKey: dbConfig?.apiKey || env.HDM_AI_API_KEY || "hdm_sma_fac92bbe8a6ba702baf750eceec2e1e60db7a701c044cc43",
-    provider: dbConfig?.provider || "groq",
-    clientEnabled: dbConfig?.features?.clientAI !== false,
+    baseUrl: defaultProvider?.baseUrl || dbConfig?.baseUrl || env.HDM_AI_BASE_URL,
+    apiKey: defaultProvider?.apiKey || dbConfig?.apiKey || env.HDM_AI_API_KEY,
+    provider: defaultProvider?.name || "groq",
+    clientEnabled: dbConfig?.clientEnabled !== false,
   };
   cacheTime = Date.now();
   return cachedConfig;
