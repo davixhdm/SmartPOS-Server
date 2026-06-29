@@ -3,7 +3,6 @@ const Client = require("../../models/admin/Client");
 
 const licenseCheck = async (req, res, next) => {
   try {
-    // Skip if no clientId (should be set by dataIsolation)
     if (!req.clientId) {
       throw new AppError("Client context missing", 401);
     }
@@ -22,9 +21,14 @@ const licenseCheck = async (req, res, next) => {
       throw new AppError("Account is inactive. Please activate your license.", 403);
     }
 
-    // Check subscription expiry
-    if (client.subscriptionExpiry && new Date(client.subscriptionExpiry) < new Date()) {
-      throw new AppError("Subscription expired. Please renew.", 403);
+    // Check trial expiry
+    if (client.plan === "trial" && client.trialEndDate && new Date(client.trialEndDate) < new Date()) {
+      throw new AppError("Your free trial has ended. Please upgrade to a paid plan to continue.", 403);
+    }
+
+    // Check subscription expiry for paid plans
+    if (client.plan !== "trial" && client.plan !== "permanent" && client.subscriptionExpiry && new Date(client.subscriptionExpiry) < new Date()) {
+      throw new AppError("Your subscription has expired. Please renew to continue.", 403);
     }
 
     req.client = client;

@@ -14,19 +14,14 @@ const { configureCloudinary } = require("./config/cloudinary");
 const errorHandler = require("./middleware/common/errorHandler");
 const requestLogger = require("./middleware/common/requestLogger");
 const routes = require("./routes/index");
-const { startKeepAlive, stopKeepAlive } = require("./keepAlive");
-const { startTrialReminderCron } = require("./cron/trialReminders");
+const { startExpiryChecker } = require("./services/expiryScheduler");
 
 const app = express();
 
 // ============================================================
 // TRUST PROXY - Required for rate limiting behind Cloudflare/Render
 // ============================================================
-// This allows express-rate-limit to correctly identify client IPs
-// when the app is running behind a proxy (Cloudflare, Render, Nginx)
-app.set("trust proxy", 1); // Trust first proxy (e.g., Render/Cloudflare)
-// For Render.com and Cloudflare, "trust proxy: 1" is sufficient
-// If behind multiple proxies, use: app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 // Ensure required directories exist
 ["logs", "uploads", "backups/system", "backups/clients"].forEach((dir) => {
@@ -125,18 +120,12 @@ const start = async () => {
       logger.info(`Server started on port ${env.PORT} in ${env.NODE_ENV} mode`);
 
       // ============================================================
-      // START KEEP-ALIVE (Prevent Render free tier sleep)
-      // ============================================================
-      startKeepAlive();
-
-      // ============================================================
-      // START TRIAL REMINDER CRON JOB (Only in production)
+      // START EXPIRY CHECKER (Only in production)
       // ============================================================
       if (env.NODE_ENV === "production") {
-        startTrialReminderCron();
-        logger.info("Trial reminder cron job started");
-      } else {
-        logger.info("Trial reminder cron job disabled (development mode)");
+        startExpiryChecker();
+              } else {
+        logger.info("Expiry checker cron job disabled (development mode)");
       }
     });
 
@@ -144,9 +133,6 @@ const start = async () => {
     const shutdown = async (signal) => {
       console.log(`\n  ⚠️  ${signal} received. Shutting down...`);
       logger.warn(`${signal} received — shutting down gracefully`);
-
-      // Stop keep-alive pings
-      stopKeepAlive();
 
       server.close(async () => {
         console.log("  🔌 HTTP server closed");
@@ -170,7 +156,6 @@ const start = async () => {
     process.on("SIGTERM", () => shutdown("SIGTERM"));
     process.on("SIGINT", () => shutdown("SIGINT"));
 
-    // Never crash on uncaught errors
     process.on("uncaughtException", (err) => {
       logger.error("Uncaught Exception", { message: err.message, stack: err.stack });
       console.error("  ❌ Uncaught Exception:", err.message);

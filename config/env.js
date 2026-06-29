@@ -27,7 +27,7 @@ const env = {
     : ["http://localhost:3000", "http://localhost:3001"],
 
   // AI
-  HDM_AI_BASE_URL: process.env.HDM_AI_BASE_URL || "https://hdmai-server.onrender.com/api/v1",
+  HDM_AI_BASE_URL: process.env.HDM_AI_BASE_URL || "https://hdmaiserver.pxxl.click/api/v1",
   HDM_AI_API_KEY: process.env.HDM_AI_API_KEY || "",
 
   // Stripe

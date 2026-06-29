@@ -49,6 +49,9 @@ const clientSchema = new mongoose.Schema(
     subscriptionExpiry: {
       type: Date,
     },
+    trialEndDate: {
+      type: Date,
+    },
     devices: [
       {
         deviceId: String,

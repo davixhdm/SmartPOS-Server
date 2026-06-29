@@ -1,5 +1,6 @@
 // services/client/aiService.js
 const AISettings = require("../../models/client/AISettings");
+const AIConfig = require("../../models/admin/AIConfig");
 const env = require("../../config/env");
 const logger = require("../../config/logger");
 const axios = require("axios");
@@ -7,42 +8,56 @@ const Sale = require("../../models/client/Sale");
 const Product = require("../../models/client/Product");
 const Customer = require("../../models/client/Customer");
 
-const BASE_URL = env.HDM_AI_BASE_URL || "https://hdmai-server.onrender.com/api/v1";
-const API_KEY = env.HDM_AI_API_KEY || "";
+let cachedConfig = null;
+let cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000;
+
+const getAIConfig = async () => {
+  if (cachedConfig && (Date.now() - cacheTime) < CACHE_TTL) {
+    return cachedConfig;
+  }
+
+  const dbConfig = await AIConfig.findOne().lean();
+  cachedConfig = {
+    baseUrl: dbConfig?.baseUrl || env.HDM_AI_BASE_URL || "https://hdmaiserver.pxxl.click/api/v1",
+    apiKey: dbConfig?.apiKey || env.HDM_AI_API_KEY || "hdm_sma_fac92bbe8a6ba702baf750eceec2e1e60db7a701c044cc43",
+    provider: dbConfig?.provider || "groq",
+    clientEnabled: dbConfig?.features?.clientAI !== false,
+  };
+  cacheTime = Date.now();
+  return cachedConfig;
+};
 
 const callAI = async (endpoint, payload) => {
   try {
-    const { data } = await axios.post(`${BASE_URL}${endpoint}`, payload, {
-      headers: { "x-api-key": API_KEY, "Content-Type": "application/json" },
+    const config = await getAIConfig();
+    const { data } = await axios.post(`${config.baseUrl}${endpoint}`, {
+      ...payload,
+      provider: payload.provider || config.provider,
+    }, {
+      headers: {
+        "Authorization": `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json"
+      },
       timeout: 15000,
     });
     return data;
   } catch (err) {
-    logger.error("AI call failed", { endpoint, error: err.message });
+    logger.error("AI call failed", { endpoint, error: err.message, status: err.response?.status });
     return { success: false, message: "AI service unavailable" };
   }
 };
 
 const gatherBusinessData = async (clientId, message) => {
-  const msg = message.toLowerCase();
+  const msg = (message || "").toLowerCase();
   const data = {};
 
-  // Always include today's summary for any business question
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todaySales = await Sale.find({
-    clientId,
-    status: "completed",
-    createdAt: { $gte: today },
-  }).lean();
 
-  const todayRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
-
-  // Broad questions — include everything
-  const broadKeywords = ["recommend", "suggest", "advice", "improve", "grow", "business", "overview", "summary", "report", "performance", "help"];
+  const broadKeywords = ["recommend", "suggest", "advice", "improve", "grow", "business", "overview", "summary", "report", "performance", "help", "hi", "hello", "hey", "how is", "doing"];
   const isBroadQuery = broadKeywords.some((kw) => msg.includes(kw)) || msg.length < 10;
 
-  // Include inventory
   const stockKeywords = ["stock", "inventory", "product", "low", "item"];
   const shouldIncludeInventory = isBroadQuery || stockKeywords.some((kw) => msg.includes(kw));
 
@@ -57,8 +72,7 @@ const gatherBusinessData = async (clientId, message) => {
     }));
   }
 
-  // Include sales data
-  const salesKeywords = ["sale", "revenue", "today", "report", "month", "selling", "top", "best", "popular", "transaction", "profit", "income", "earn", "performance", "growth", "trend", "summary", "overview", "dashboard"];
+  const salesKeywords = ["sale", "revenue", "today", "report", "month", "selling", "top", "best", "popular", "transaction", "profit", "income", "earn", "performance", "growth", "trend", "summary", "overview", "dashboard", "doing", "business"];
   const shouldIncludeSales = isBroadQuery || salesKeywords.some((kw) => msg.includes(kw)) || msg.length < 10;
 
   if (shouldIncludeSales) {
@@ -86,7 +100,6 @@ const gatherBusinessData = async (clientId, message) => {
       .slice(0, 5)
       .map(([name, total]) => ({ name, sales: total }));
 
-    // Today's data
     const todaySalesList = sales.filter((s) => new Date(s.createdAt) >= today);
     const todayRev = todaySalesList.reduce((sum, s) => sum + s.total, 0);
 
@@ -99,7 +112,6 @@ const gatherBusinessData = async (clientId, message) => {
       payment_methods: paymentMethods,
     };
 
-    // Monthly overview
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
@@ -114,7 +126,6 @@ const gatherBusinessData = async (clientId, message) => {
     };
   }
 
-  // Include customer data
   if (isBroadQuery || msg.includes("customer") || msg.includes("loyalty") || msg.includes("client") || msg.includes("buyer")) {
     const customers = await Customer.find({ clientId }).lean();
     data.customers = customers.map((c) => ({
@@ -130,6 +141,11 @@ const gatherBusinessData = async (clientId, message) => {
 };
 
 const chat = async (clientId, message, userId) => {
+  const config = await getAIConfig();
+  if (!config.clientEnabled) {
+    return "AI features are currently disabled by the administrator.";
+  }
+
   const settings = await AISettings.findOne({ clientId }).lean();
   if (!settings?.enabledFeatures?.posCommands && !settings?.useGlobalAI) {
     return "AI features are disabled. Enable them in Settings.";
@@ -141,78 +157,95 @@ const chat = async (clientId, message, userId) => {
     message,
     client_id: clientId,
     business_id: clientId,
-    conversation_id: null,
+    provider: config.provider,
     data: businessData,
   };
 
-  const res = await callAI("/smartpos/chat", payload);
-  return res?.data?.reply || "I couldn't process that request. Please try again.";
+  const res = await callAI("/projects/smartpos/chat", payload);
+
+  return res?.data?.reply || res?.reply || "I couldn't process that request. Please try again.";
 };
 
 const executeCommand = async (clientId, command) => {
-  const settings = await AISettings.findOne({ clientId }).lean();
-  if (!settings?.enabledFeatures?.posCommands) return { message: "NLP commands are disabled." };
-
-  const payload = { command, business_id: clientId, parameters: {} };
-  const res = await callAI("/smartpos/command", payload);
-  return res?.data || { message: "Command failed." };
+  return chat(clientId, command);
 };
 
 const getSalesAnalytics = async (clientId) => {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const sales = await Sale.find({ clientId, status: "completed", createdAt: { $gte: thirtyDaysAgo } }).lean();
-
-  const totalSales = sales.reduce((s, r) => s + r.total, 0);
-  const paymentMethods = {};
-  sales.forEach((s) => { paymentMethods[s.paymentMethod] = (paymentMethods[s.paymentMethod] || 0) + s.total; });
-
-  const productSales = {};
-  sales.forEach((s) => s.items.forEach((i) => { productSales[i.name] = (productSales[i.name] || 0) + i.total; }));
-  const topProducts = Object.entries(productSales).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, total]) => ({ name, sales: total }));
-
+  const businessData = await gatherBusinessData(clientId, "sales analytics this month");
   const payload = {
+    message: "Show me my sales analytics for this month",
+    client_id: clientId,
     business_id: clientId,
-    analytics_type: "sales",
-    period: "this_month",
-    data: { total_sales: totalSales, transactions: sales.length, top_products: topProducts, payment_methods: paymentMethods },
+    provider: "groq",
+    data: businessData,
   };
-  return callAI("/smartpos/analytics/sales", payload);
+  const res = await callAI("/projects/smartpos/analytics/sales", payload);
+  return res?.data?.reply || res?.reply || "Analytics unavailable.";
 };
 
 const getRestockForecast = async (clientId) => {
-  const products = await Product.find({ clientId, stock: { $lte: 20 } }).lean();
-  const stockData = products.map((p) => ({ product: p.name, stock: p.stock, daily_sales: 0, lead_time_days: 2 }));
-  const payload = { business_id: clientId, forecast_type: "restock", period: "next_week", data: { current_stock: stockData } };
-  return callAI("/smartpos/forecast/restock", payload);
+  const businessData = await gatherBusinessData(clientId, "restock forecast");
+  const payload = {
+    message: "What products need restocking?",
+    client_id: clientId,
+    business_id: clientId,
+    provider: "groq",
+    data: businessData,
+  };
+  const res = await callAI("/projects/smartpos/forecast/restock", payload);
+  return res?.data?.reply || res?.reply || "Forecast unavailable.";
 };
 
 const checkAlerts = async (clientId) => {
-  const lowStock = await Product.find({ clientId, stock: { $lte: "$lowStockThreshold" } }).lean();
+  const businessData = await gatherBusinessData(clientId, "check alerts");
   const payload = {
+    message: "Check for business alerts",
+    client_id: clientId,
     business_id: clientId,
-    data: { inventory: lowStock.map((p) => ({ product: p.name, stock: p.stock, reorder_level: p.lowStockThreshold })), unusual_transactions: [] },
+    provider: "groq",
+    data: businessData,
   };
-  return callAI("/smartpos/alerts/check", payload);
+  const res = await callAI("/projects/smartpos/alerts/check", payload);
+  return res?.data?.reply || res?.reply || "No alerts found.";
 };
 
 const detectAnomalies = async (clientId) => {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const sales = await Sale.find({ clientId, status: "completed", createdAt: { $gte: thirtyDaysAgo } }).lean();
-  const dailyData = {};
-  sales.forEach((s) => {
-    const date = new Date(s.createdAt).toISOString().split("T")[0];
-    dailyData[date] = (dailyData[date] || 0) + s.total;
-  });
-  const data = Object.entries(dailyData).map(([date, total]) => ({ date, sales: total, transactions: 0 }));
-  return callAI("/smartpos/anomaly/detect", { business_id: clientId, data });
+  const businessData = await gatherBusinessData(clientId, "detect anomalies");
+  const payload = {
+    message: "Detect anomalies in sales data",
+    client_id: clientId,
+    business_id: clientId,
+    provider: "groq",
+    data: businessData,
+  };
+  const res = await callAI("/projects/smartpos/anomaly/detect", payload);
+  return res?.data?.reply || res?.reply || "No anomalies detected.";
 };
 
 const generateReport = async (clientId, reportType, period) => {
-  return callAI("/smartpos/report/generate", { business_id: clientId, report_type: reportType, period });
+  const businessData = await gatherBusinessData(clientId, `${reportType} report ${period}`);
+  const payload = {
+    message: `Generate ${reportType} report for ${period}`,
+    client_id: clientId,
+    business_id: clientId,
+    provider: "groq",
+    data: businessData,
+  };
+  const res = await callAI("/projects/smartpos/report/generate", payload);
+  return res?.data?.reply || res?.reply || "Report generation failed.";
 };
 
 const semanticSearch = async (clientId, query, limit = 10) => {
-  return callAI("/smartpos/search/semantic", { business_id: clientId, query, limit });
+  const businessData = await gatherBusinessData(clientId, query);
+  const payload = {
+    message: query,
+    client_id: clientId,
+    business_id: clientId,
+    provider: "groq",
+    data: { ...businessData, limit },
+  };
+  const res = await callAI("/projects/smartpos/search/semantic", payload);
+  return res?.data?.reply || res?.reply || "No results found.";
 };
 
 module.exports = { chat, executeCommand, getSalesAnalytics, getRestockForecast, checkAlerts, detectAnomalies, generateReport, semanticSearch };

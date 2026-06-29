@@ -13,10 +13,9 @@ const chat = catchAsync(async (req, res) => {
   const config = await AIConfig.findOne().lean();
   if (!config?.landingEnabled) throw new AppError("AI chat is currently disabled", 403);
 
-  const { message, client_id, conversation_id } = req.body;
+  const { message } = req.body;
   if (!message) throw new AppError("Message required", 400);
 
-  // Get pricing info for accurate answers
   const plan = await Subscription.findOne().lean();
   const pricing = plan ? {
     trial: `Free ${plan.freeTrialDays || 14} days`,
@@ -27,16 +26,15 @@ const chat = catchAsync(async (req, res) => {
 
   try {
     const { data } = await axios.post(
-      `${env.HDM_AI_BASE_URL}/smartpos/public/chat`,
+      `${env.HDM_AI_BASE_URL}/projects/smartpos/chat`,
       {
         message,
-        client_id: client_id || "visitor",
-        conversation_id: conversation_id || null,
-        feature: "public",
+        client_id: "public",
+        is_public: true,
+        provider: "groq",
         data: {
-          context: "landing_page",
           features: [
-            "Fast barcode scanning (camera + external scanner)",
+            "Fast barcode scanning",
             "M-Pesa integration (STK Push, Send Money, Till, Paybill)",
             "Multi-currency support (KES, USD, EUR, GBP, UGX, TZS, RWF, BIF, ZAR, NGN, GHS)",
             "Offline-first — works without internet",
@@ -56,10 +54,17 @@ const chat = catchAsync(async (req, res) => {
           },
         },
       },
-      { headers: { "x-api-key": env.HDM_AI_API_KEY, "Content-Type": "application/json" }, timeout: 15000 }
+      { 
+        headers: { 
+          "Authorization": `Bearer ${env.HDM_AI_API_KEY}`,
+          "Content-Type": "application/json" 
+        }, 
+        timeout: 15000 
+      }
     );
     res.json({ success: true, data: data.data });
-  } catch {
+  } catch (err) {
+    console.error("Public chat error:", err.message);
     res.json({ success: true, data: { reply: "AI is temporarily unavailable. Please try again later." } });
   }
 });
