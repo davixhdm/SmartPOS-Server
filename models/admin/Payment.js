@@ -27,11 +27,15 @@ const paymentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "completed", "failed", "rejected"],
       default: "pending",
     },
     transactionId: String,
     mpesaReceipt: String,
+    reference: {
+      type: String,
+      trim: true,
+    },
     reason: String,
     approvedBy: {
       type: mongoose.Schema.Types.ObjectId,

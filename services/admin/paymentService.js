@@ -1,4 +1,3 @@
-// services/admin/paymentService.js
 const Payment = require("../../models/admin/Payment");
 const Client = require("../../models/admin/Client");
 const User = require("../../models/client/User");
@@ -33,7 +32,7 @@ const approvePayment = async (paymentId, adminId) => {
   if (!payment) throw new AppError("Payment not found", 404);
   if (payment.status !== "pending") throw new AppError("Payment already processed", 400);
 
-  payment.status = "approved";
+  payment.status = "completed";
   payment.approvedBy = adminId;
   payment.approvedAt = new Date();
   await payment.save();
@@ -45,22 +44,19 @@ const approvePayment = async (paymentId, adminId) => {
 
   const now = new Date();
   let expiry = null;
-  let planDisplay = "";
-  
+
   if (payment.billingCycle === "monthly") {
     expiry = new Date(now.setMonth(now.getMonth() + 1));
-    planDisplay = "Monthly Subscription";
   } else if (payment.billingCycle === "yearly") {
     expiry = new Date(now.setFullYear(now.getFullYear() + 1));
-    planDisplay = "Yearly Subscription";
   } else if (payment.billingCycle === "permanent") {
     expiry = new Date("2099-12-31");
-    planDisplay = "Permanent License";
   }
 
   client.status = "active";
   client.plan = payment.billingCycle;
   client.subscriptionExpiry = expiry;
+  client.trialEndDate = null;
   await client.save();
 
   await User.updateMany({ clientId: client._id }, { active: true });
@@ -71,11 +67,10 @@ const approvePayment = async (paymentId, adminId) => {
     { upsert: true, new: true }
   );
 
-  // Send approval email with license details
   try {
     await emailService.sendPaymentApproved(
-      client.email, 
-      client.businessName, 
+      client.email,
+      client.businessName,
       client.licenseKey,
       payment.billingCycle,
       expiry
@@ -110,9 +105,9 @@ const rejectPayment = async (paymentId, reason) => {
   return payment;
 };
 
-const deleteApprovedPayments = async () => {
-  const result = await Payment.deleteMany({ status: "approved" });
-  logger.info(`Deleted ${result.deletedCount} approved payments`);
+const deleteCompletedPayments = async () => {
+  const result = await Payment.deleteMany({ status: "completed" });
+  logger.info(`Deleted ${result.deletedCount} completed payments`);
   return result;
 };
 
@@ -128,4 +123,4 @@ const deletePayment = async (id) => {
   return payment;
 };
 
-module.exports = { getPendingPayments, getAllPayments, approvePayment, rejectPayment, deleteApprovedPayments, deleteRejectedPayments, deletePayment };
+module.exports = { getPendingPayments, getAllPayments, approvePayment, rejectPayment, deleteCompletedPayments, deleteRejectedPayments, deletePayment };

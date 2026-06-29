@@ -97,7 +97,27 @@ const login = catchAsync(async (req, res) => {
     throw new AppError("Account is suspended. Please contact support.", 403);
   }
 
+  // Check if expired
   if (client.status === "inactive") {
+    const now = new Date();
+    const isExpired = (client.plan === 'trial' && client.trialEndDate && client.trialEndDate < now)
+      || (client.plan !== 'trial' && client.subscriptionExpiry && client.subscriptionExpiry < now);
+    
+    if (isExpired) {
+      // Allow login but return token so they can access /renew
+      const license = await License.findOne({ clientId: user.clientId, status: "active" });
+      const token = generateClientToken(user);
+      return res.json({
+        success: true,
+        expired: true,
+        user: { id: user._id, name: user.name, email: user.email, role: user.role },
+        token,
+        clientId: user.clientId,
+        businessName: client.businessName,
+        message: "Your subscription has expired. Please renew to continue.",
+      });
+    }
+    
     throw new AppError("Your account is pending approval. You'll receive an email once approved.", 403);
   }
 

@@ -13,5 +13,6 @@ router.use("/payments", maintenance, require("./paymentRoutes"));
 router.use("/chat", maintenance, require("./chatRoutes"));
 // System routes WITHOUT maintenance check (so frontend can check status)
 router.use("/system", require("./systemRoutes"));
+router.use("/renew", require("./renewRoutes"));
 
 module.exports = router;

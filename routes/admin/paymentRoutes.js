@@ -1,10 +1,9 @@
-// routes/admin/paymentRoutes.js
 const express = require("express");
 const router = express.Router();
 const {
   getPendingPayments, getAllPayments,
   approvePayment, rejectPayment,
-  deleteApproved, deleteRejected, deletePayment,
+  deleteCompleted, deleteRejected, deletePayment,
 } = require("../../controllers/admin/paymentController");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const validate = require("../../middleware/common/validate");
@@ -14,7 +13,7 @@ router.get("/pending", adminAuth, getPendingPayments);
 router.get("/", adminAuth, getAllPayments);
 router.put("/:id/approve", adminAuth, validate(approvePaymentSchema), approvePayment);
 router.put("/:id/reject", adminAuth, validate(rejectPaymentSchema), rejectPayment);
-router.delete("/approved", adminAuth, deleteApproved);
+router.delete("/completed", adminAuth, deleteCompleted);
 router.delete("/rejected", adminAuth, deleteRejected);
 router.delete("/:id", adminAuth, deletePayment);
 
